@@ -4,7 +4,7 @@ Go REST API that checks a various parameters in a MySQL database and returns JSO
 
 ## Run 
 ```sh
-go run mysql_health_check.go
+go run mysql_health_check.go [-port <port_number>]
 ```
 
 ## Usage
