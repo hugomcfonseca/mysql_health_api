@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"math/rand"
 	"net/http"
 	"os"
 	"strconv"
@@ -130,8 +129,8 @@ func int2bool(value int) bool {
 	return false
 }
 
-// getUnknownColumns Used to get value from specific column of a range of unknown columns
-func getUnknownColumns(rows *sql.Rows, column string) string {
+// unknownColumns Used to get value from specific column of a range of unknown columns
+func unknownColumns(rows *sql.Rows, column string) string {
 	columns, _ := rows.Columns()
 	count := len(columns)
 	values := make([]interface{}, count)
@@ -169,11 +168,20 @@ func getUnknownColumns(rows *sql.Rows, column string) string {
 	return ""
 }
 
-// generateRandomNum Generate random number from a given range
-func generateRandomNum(min int, max int) int {
-	interval := (max - min) + 1
+// routeResponse Used to build response to API requests
+func routeResponse(w http.ResponseWriter, httpStatus bool, contents string) {
+	res := new(HTTPResponse)
 
-	return (rand.Intn(interval) + min)
+	if httpStatus {
+		w.WriteHeader(200)
+	} else {
+		w.WriteHeader(404)
+	}
+
+	res.Status = httpStatus
+	res.Content = contents
+	response, _ := json.Marshal(res)
+	fmt.Fprintf(w, "%s", response)
 }
 
 /*
@@ -208,7 +216,7 @@ func replicaStatus(lagCount int) (bool, int) {
 
 	defer rows.Close()
 
-	secondsBehindMaster := getUnknownColumns(rows, "Seconds_Behind_Master")
+	secondsBehindMaster := unknownColumns(rows, "Seconds_Behind_Master")
 
 	if secondsBehindMaster == "" {
 		secondsBehindMaster = "0"
@@ -237,7 +245,7 @@ func isReplica() (bool, string) {
 
 	defer rows.Close()
 
-	masterHost := getUnknownColumns(rows, "Master_Host")
+	masterHost := unknownColumns(rows, "Master_Host")
 
 	if masterHost != "" {
 		return true, masterHost
@@ -284,133 +292,56 @@ func galeraClusterState() (bool, string) {
 
 // RouteStatusReadOnly ...
 func RouteStatusReadOnly(w http.ResponseWriter, r *http.Request) {
-	res := new(HTTPResponse)
-
 	log.Print("Checking database status: readOnly...")
 	isReadonly := readOnly()
 
-	if isReadonly {
-		w.WriteHeader(200)
-		res.Status = true
-		res.Content = ""
-	} else {
-		w.WriteHeader(generateRandomNum(418, 451))
-		res.Status = false
-		res.Content = ""
-	}
-
-	response, _ := json.Marshal(res)
-	fmt.Fprintf(w, "%s", response)
+	routeResponse(w, isReadonly, "")
 }
 
 // RouteStatusReadWritable ...
 func RouteStatusReadWritable(w http.ResponseWriter, r *http.Request) {
-	res := new(HTTPResponse)
-
 	log.Print("Checking database status: readable and writable...")
 	isReadonly := readOnly()
 
-	if !isReadonly {
-		w.WriteHeader(200)
-		res.Status = true
-		res.Content = ""
-	} else {
-		w.WriteHeader(generateRandomNum(418, 451))
-		res.Status = false
-		res.Content = ""
-	}
-
-	response, _ := json.Marshal(res)
-	fmt.Fprintf(w, "%s", response)
+	routeResponse(w, !isReadonly, "")
 }
 
 // RouteStatusSingle ...
 func RouteStatusSingle(w http.ResponseWriter, r *http.Request) {
-	res := new(HTTPResponse)
-
 	log.Print("Checking database status: single...")
 	isReadonly := readOnly()
 	isReplica, _ := isReplica()
 	isServeLogs := int2bool(servingBinlogs())
 
-	if !isReadonly && !isReplica && !isServeLogs {
-		w.WriteHeader(200)
-		res.Status = true
-		res.Content = ""
-	} else {
-		w.WriteHeader(generateRandomNum(418, 451))
-		res.Status = false
-		res.Content = ""
-	}
-
-	response, _ := json.Marshal(res)
-	fmt.Fprintf(w, "%s", response)
+	routeResponse(w, !isReadonly && !isReplica && !isServeLogs, "")
 }
 
 // RouteStatusLeader ...
 func RouteStatusLeader(w http.ResponseWriter, r *http.Request) {
-	res := new(HTTPResponse)
-
 	log.Print("Checking database status: leader...")
 	isReplica, _ := isReplica()
 	isServeLogs := int2bool(servingBinlogs())
 
-	if !isReplica && isServeLogs {
-		w.WriteHeader(200)
-		res.Status = true
-		res.Content = ""
-	} else {
-		w.WriteHeader(generateRandomNum(418, 451))
-		res.Status = false
-		res.Content = ""
-	}
-
-	response, _ := json.Marshal(res)
-	fmt.Fprintf(w, "%s", response)
+	routeResponse(w, !isReplica && isServeLogs, "")
 }
 
 // RouteStatusFollower ...
 func RouteStatusFollower(w http.ResponseWriter, r *http.Request) {
-	res := new(HTTPResponse)
-
 	log.Print("Checking database status: follower...")
 	isReplica, _ := isReplica()
 
-	if isReplica {
-		w.WriteHeader(200)
-		res.Status = true
-		res.Content = ""
-	} else {
-		w.WriteHeader(generateRandomNum(418, 451))
-		res.Status = false
-		res.Content = ""
-	}
+	routeResponse(w, isReplica, "")
 
-	response, _ := json.Marshal(res)
-	fmt.Fprintf(w, "%s", response)
 }
 
 // RouteStatusTopology ...
 func RouteStatusTopology(w http.ResponseWriter, r *http.Request) {
-	res := new(HTTPResponse)
-
 	log.Print("Checking database status: topology...")
 	isReplica, _ := isReplica()
 	replicaStatus, _ := replicaStatus(0)
 	isServeLogs := int2bool(servingBinlogs())
 
-	if (!replicaStatus && isServeLogs) || isReplica {
-		w.WriteHeader(200)
-		res.Status = true
-		res.Content = ""
-	} else {
-		w.WriteHeader(generateRandomNum(418, 451))
-		res.Status = false
-		res.Content = ""
-	}
-
-	response, _ := json.Marshal(res)
-	fmt.Fprintf(w, "%s", response)
+	routeResponse(w, (!replicaStatus && isServeLogs) || isReplica, "")
 }
 
 /*
@@ -419,89 +350,37 @@ func RouteStatusTopology(w http.ResponseWriter, r *http.Request) {
 
 // RouteRoleMaster ...
 func RouteRoleMaster(w http.ResponseWriter, r *http.Request) {
-	res := new(HTTPResponse)
-
 	log.Print("Checking database role: master...")
 	isReadonly := readOnly()
 	isReplica, _ := isReplica()
 
-	if !isReadonly && !isReplica {
-		w.WriteHeader(200)
-		res.Status = true
-		res.Content = ""
-	} else {
-		w.WriteHeader(generateRandomNum(418, 451))
-		res.Status = false
-		res.Content = ""
-	}
-
-	response, _ := json.Marshal(res)
-	fmt.Fprintf(w, "%s", response)
+	routeResponse(w, !isReadonly && !isReplica, "")
 }
 
 // RouteRoleReplica ...
 func RouteRoleReplica(w http.ResponseWriter, r *http.Request) {
-	res := new(HTTPResponse)
-
 	log.Print("Checking database role: replica...")
 	isReadonly := readOnly()
 	replicaStatus, _ := replicaStatus(0)
 
-	if isReadonly && replicaStatus {
-		w.WriteHeader(200)
-		res.Status = true
-		res.Content = ""
-	} else {
-		w.WriteHeader(generateRandomNum(418, 451))
-		res.Status = false
-		res.Content = ""
-	}
-
-	response, _ := json.Marshal(res)
-	fmt.Fprintf(w, "%s", response)
+	routeResponse(w, isReadonly && replicaStatus, "")
 }
 
 // RouteRoleReplicaByLag ...
 func RouteRoleReplicaByLag(w http.ResponseWriter, r *http.Request) {
-	res := new(HTTPResponse)
-
 	log.Print("Checking database role: replica by lag...")
 	isReadonly := readOnly()
 	replicaStatus, _ := replicaStatus(lag)
 
-	if isReadonly && replicaStatus {
-		w.WriteHeader(200)
-		res.Status = true
-		res.Content = ""
-	} else {
-		w.WriteHeader(generateRandomNum(418, 451))
-		res.Status = false
-		res.Content = ""
-	}
-
-	response, _ := json.Marshal(res)
-	fmt.Fprintf(w, "%s", response)
+	routeResponse(w, isReadonly && replicaStatus, "")
 }
 
 // RouteRoleGalera ...
 func RouteRoleGalera(w http.ResponseWriter, r *http.Request) {
-	res := new(HTTPResponse)
-
 	log.Print("Checking database role: galera...")
 	galeraClusterState, _ := galeraClusterState()
 
-	if galeraClusterState {
-		w.WriteHeader(200)
-		res.Status = true
-		res.Content = ""
-	} else {
-		w.WriteHeader(generateRandomNum(418, 451))
-		res.Status = false
-		res.Content = ""
-	}
-
-	response, _ := json.Marshal(res)
-	fmt.Fprintf(w, "%s", response)
+	routeResponse(w, galeraClusterState, "")
 }
 
 /*
@@ -510,87 +389,50 @@ func RouteRoleGalera(w http.ResponseWriter, r *http.Request) {
 
 // RouteReadGaleraState ...
 func RouteReadGaleraState(w http.ResponseWriter, r *http.Request) {
-	res := new(HTTPResponse)
-
 	log.Print("Reading database state: galera...")
 	galeraClusterState, varValue := galeraClusterState()
 
-	if !galeraClusterState {
-		w.WriteHeader(generateRandomNum(418, 451))
-		res.Status = false
-		res.Content = ""
-	} else {
-		w.WriteHeader(200)
-		res.Status = true
-		res.Content = varValue
-	}
-
-	response, _ := json.Marshal(res)
-	fmt.Fprintf(w, "%s", response)
+	routeResponse(w, galeraClusterState, varValue)
 }
 
 // RouteReadReplicationLag ...
 func RouteReadReplicationLag(w http.ResponseWriter, r *http.Request) {
-	res := new(HTTPResponse)
-
 	log.Print("Reading database replication: lag...")
-
+	lagString := ""
 	isReplica, _ := isReplica()
 	_, lagValue := replicaStatus(0)
 
-	if !isReplica {
-		w.WriteHeader(generateRandomNum(418, 451))
-		res.Status = false
-		res.Content = ""
-	} else {
-		w.WriteHeader(200)
-		res.Status = true
-		res.Content = strconv.Itoa(lagValue)
+	if isReplica {
+		lagString = strconv.Itoa(lagValue)
 	}
 
-	response, _ := json.Marshal(res)
-	fmt.Fprintf(w, "%s", response)
+	routeResponse(w, isReplica, lagString)
 }
 
 // RouteReadReplicationMaster ...
 func RouteReadReplicationMaster(w http.ResponseWriter, r *http.Request) {
-	res := new(HTTPResponse)
-
 	log.Print("Reading database status: master...")
+	lagString := ""
 	isReplica, _ := isReplica()
 	_, lagValue := replicaStatus(0)
 
-	if !isReplica {
-		w.WriteHeader(generateRandomNum(418, 451))
-		res.Status = false
-		res.Content = ""
-	} else {
-		w.WriteHeader(200)
-		res.Status = true
-		res.Content = strconv.Itoa(lagValue)
+	if isReplica {
+		lagString = strconv.Itoa(lagValue)
 	}
 
-	response, _ := json.Marshal(res)
-	fmt.Fprintf(w, "%s", response)
+	routeResponse(w, isReplica, lagString)
 }
 
 // RouteReadReplicasCounter ...
 func RouteReadReplicasCounter(w http.ResponseWriter, r *http.Request) {
-	res := new(HTTPResponse)
-
 	log.Print("Reading counter of database replications...")
+	lagString := "0"
 	isServeLogs := servingBinlogs()
 
-	if !int2bool(isServeLogs) {
-		w.WriteHeader(generateRandomNum(418, 451))
-		res.Status = false
-		res.Content = "0"
-	} else {
-		w.WriteHeader(200)
-		res.Status = true
-		res.Content = strconv.Itoa(isServeLogs)
+	if int2bool(isServeLogs) {
+		lagString = strconv.Itoa(isServeLogs)
 	}
 
-	response, _ := json.Marshal(res)
-	fmt.Fprintf(w, "%s", response)
+	routeResponse(w, int2bool(isServeLogs), lagString)
+
 }
