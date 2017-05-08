@@ -3,6 +3,7 @@ package main
 import (
 	"database/sql"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"log"
 	"net/http"
@@ -32,7 +33,12 @@ var lag int
 
 func main() {
 
-	cfg, err := ini.Load(os.Getenv("HOME") + "/.my.cnf") // change me
+	var portstring string
+
+	flag.StringVar(&portstring, "port", "3307", "Listening port")
+	flag.Parse()
+
+	cfg, err := ini.Load(os.Getenv("HOME") + "/.my.cnf")
 
 	if err != nil {
 		log.Panic(err)
@@ -69,7 +75,6 @@ func main() {
 	router.HandleFunc("/read/replication/master", RouteReadReplicationMaster)
 	router.HandleFunc("/read/replication/replicas_count", RouteReadReplicasCounter)
 
-	portstring := "3307"
 	log.Printf("Listening on port %s ...", portstring)
 
 	err2 := http.ListenAndServe(":"+portstring, LogRequests(CheckURL(router)))
