@@ -10,5 +10,5 @@ go run mysql_health_check.go [-port <port_number>]
 ## Usage
 To check if a database is in readonly mode, you can execute the following command:
 ```sh
-curl -i localhost:3007/status/rw
+curl -i localhost:3307/status/rw
 ```
