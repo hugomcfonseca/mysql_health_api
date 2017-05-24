@@ -44,24 +44,15 @@ func main() {
 		log.Panic(err)
 	}
 
-	var dbHost string
-
 	dbUser := cfg.Section("client").Key("user").String()
 	dbPass := cfg.Section("client").Key("password").String()
-
-	isSocket := cfg.Section("client").HasKey("socket")
-
-	if isSocket {
-		dbHost = "unix(" + cfg.Section("client").Key("socket").String() + ")"
-	} else {
-		dbHost = cfg.Section("client").Key("hostname").String()
-	}
+	dbHost := cfg.Section("client").Key("hostname").String()
 
 	db, err = sql.Open("mysql", dbUser+":"+dbPass+"@"+dbHost+"/mysql")
 
 	if err := db.Ping(); err != nil {
 		log.Panic(err)
-	} 
+	}
 
 	defer db.Close()
 
