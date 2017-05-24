@@ -180,7 +180,7 @@ func routeResponse(w http.ResponseWriter, httpStatus bool, contents string) {
 	if httpStatus {
 		w.WriteHeader(200)
 	} else {
-		w.WriteHeader(404)
+		w.WriteHeader(403)
 	}
 
 	res.Status = httpStatus
