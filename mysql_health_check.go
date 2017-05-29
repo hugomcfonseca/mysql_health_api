@@ -6,13 +6,12 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"math"
 	"net/http"
 	"os"
 	"strconv"
 	"strings"
 	"time"
-
-	"math"
 
 	"github.com/go-ini/ini"
 	_ "github.com/go-sql-driver/mysql"
@@ -167,6 +166,10 @@ func unknownColumns(rows *sql.Rows, column string) string {
 
 			b, ok := val.([]byte)
 
+			if b == nil {
+				return ""
+			}
+
 			if ok {
 				value = string(b)
 			} else {
@@ -228,6 +231,8 @@ func replicaStatus(lagCount int) (bool, int) {
 		}
 	}
 
+	notSlave := false
+
 	rows, err := db.Query("show slave status")
 
 	if err != nil {
@@ -239,12 +244,13 @@ func replicaStatus(lagCount int) (bool, int) {
 	secondsBehindMaster := unknownColumns(rows, "Seconds_Behind_Master")
 
 	if secondsBehindMaster == "" {
+		notSlave = true
 		secondsBehindMaster = "0"
 	}
 
 	lag, _ = strconv.Atoi(secondsBehindMaster)
 
-	if lag > 0 {
+	if lag > 0 || !notSlave {
 		if lagCount > lag {
 			return true, lag
 		}
@@ -454,5 +460,4 @@ func RouteReadReplicasCounter(w http.ResponseWriter, r *http.Request) {
 	}
 
 	routeResponse(w, int2bool(isServeLogs), lagString)
-
 }
