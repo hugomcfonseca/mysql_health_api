@@ -12,6 +12,8 @@ import (
 	"strings"
 	"time"
 
+	"math"
+
 	"github.com/go-ini/ini"
 	_ "github.com/go-sql-driver/mysql"
 )
@@ -61,7 +63,7 @@ func main() {
 
 	if err := db.Ping(); err != nil {
 		log.Panic(err)
-	} 
+	}
 
 	defer db.Close()
 
@@ -219,7 +221,11 @@ func readOnly() bool {
 // replicaStatus Read database status if it is a replica
 func replicaStatus(lagCount int) (bool, int) {
 	if lagCount == 0 {
-		lagCount = 1<<63 - 1
+		if strconv.IntSize == 64 {
+			lagCount = math.MaxInt64
+		} else {
+			lagCount = math.MaxInt32
+		}
 	}
 
 	rows, err := db.Query("show slave status")
