@@ -23,10 +23,11 @@ type HTTPResponse struct {
 	Content string `json:"content"`
 }
 
+// SlaveStatus Structure used to save output from 'SHOW SLAVE STATUS' queries
 type SlaveStatus struct {
-	masterHost    string `string:"ip"`
-	masterPort    string `string:"port"`
-	secondsMaster string `string:"seconds"`
+	masterHost    string
+	masterPort    string
+	secondsMaster string
 }
 
 // ResponseType Constant
