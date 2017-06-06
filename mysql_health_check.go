@@ -23,6 +23,12 @@ type HTTPResponse struct {
 	Content string `json:"content"`
 }
 
+type SlaveStatus struct {
+	masterHost    string `string:"ip"`
+	masterPort    string `string:"port"`
+	secondsMaster string `string:"seconds"`
+}
+
 // ResponseType Constant
 const ResponseType = "application/json"
 
@@ -145,11 +151,12 @@ func int2bool(value int) bool {
 }
 
 // unknownColumns Used to get value from specific column of a range of unknown columns
-func unknownColumns(rows *sql.Rows, column string) string {
+func unknownColumns(rows *sql.Rows) SlaveStatus {
 	columns, _ := rows.Columns()
 	count := len(columns)
 	values := make([]interface{}, count)
 	valuePtrs := make([]interface{}, count)
+	res := new(SlaveStatus)
 
 	for rows.Next() {
 		for i := range columns {
@@ -167,7 +174,7 @@ func unknownColumns(rows *sql.Rows, column string) string {
 			b, ok := val.([]byte)
 
 			if b == nil {
-				return ""
+				return *res
 			}
 
 			if ok {
@@ -178,13 +185,17 @@ func unknownColumns(rows *sql.Rows, column string) string {
 
 			sNum := value.(string)
 
-			if col == column {
-				return sNum
+			if col == "Master_Host" {
+				res.masterHost = sNum
+			} else if col == "Master_Port" {
+				res.masterPort = sNum
+			} else if col == "Seconds_Behind_Master" {
+				res.secondsMaster = sNum
 			}
 		}
 	}
 
-	return ""
+	return *res
 }
 
 // routeResponse Used to build response to API requests
@@ -241,14 +252,14 @@ func replicaStatus(lagCount int) (bool, int) {
 
 	defer rows.Close()
 
-	secondsBehindMaster := unknownColumns(rows, "Seconds_Behind_Master")
+	slaveValues := unknownColumns(rows)
 
-	if secondsBehindMaster == "" {
+	if slaveValues.secondsMaster == "" {
 		notSlave = true
-		secondsBehindMaster = "0"
+		slaveValues.secondsMaster = "0"
 	}
 
-	lag, _ = strconv.Atoi(secondsBehindMaster)
+	lag, _ = strconv.Atoi(slaveValues.secondsMaster)
 
 	if lag > 0 || !notSlave {
 		if lagCount > lag {
@@ -262,22 +273,22 @@ func replicaStatus(lagCount int) (bool, int) {
 }
 
 // isReplica Get database's master, in case it is a replica
-func isReplica() (bool, string) {
+func isReplica() (bool, string, string) {
 	rows, err := db.Query("show slave status")
 
 	if err != nil {
-		return false, ""
+		return false, "", ""
 	}
 
 	defer rows.Close()
 
-	masterHost := unknownColumns(rows, "Master_Host")
+	slaveValues := unknownColumns(rows)
 
-	if masterHost != "" {
-		return true, masterHost
+	if slaveValues.masterHost != "" {
+		return true, slaveValues.masterHost, slaveValues.masterPort
 	}
 
-	return false, ""
+	return false, "", ""
 }
 
 // servingBinlogs ...
@@ -336,7 +347,7 @@ func RouteStatusReadWritable(w http.ResponseWriter, r *http.Request) {
 func RouteStatusSingle(w http.ResponseWriter, r *http.Request) {
 	log.Print("Checking database status: single...")
 	isReadonly := readOnly()
-	isReplica, _ := isReplica()
+	isReplica, _, _ := isReplica()
 	isServeLogs := int2bool(servingBinlogs())
 
 	routeResponse(w, !isReadonly && !isReplica && !isServeLogs, "")
@@ -345,7 +356,7 @@ func RouteStatusSingle(w http.ResponseWriter, r *http.Request) {
 // RouteStatusLeader ...
 func RouteStatusLeader(w http.ResponseWriter, r *http.Request) {
 	log.Print("Checking database status: leader...")
-	isReplica, _ := isReplica()
+	isReplica, _, _ := isReplica()
 	isServeLogs := int2bool(servingBinlogs())
 
 	routeResponse(w, !isReplica && isServeLogs, "")
@@ -354,7 +365,7 @@ func RouteStatusLeader(w http.ResponseWriter, r *http.Request) {
 // RouteStatusFollower ...
 func RouteStatusFollower(w http.ResponseWriter, r *http.Request) {
 	log.Print("Checking database status: follower...")
-	isReplica, _ := isReplica()
+	isReplica, _, _ := isReplica()
 
 	routeResponse(w, isReplica, "")
 
@@ -363,7 +374,7 @@ func RouteStatusFollower(w http.ResponseWriter, r *http.Request) {
 // RouteStatusTopology ...
 func RouteStatusTopology(w http.ResponseWriter, r *http.Request) {
 	log.Print("Checking database status: topology...")
-	isReplica, _ := isReplica()
+	isReplica, _, _ := isReplica()
 	replicaStatus, _ := replicaStatus(0)
 	isServeLogs := int2bool(servingBinlogs())
 
@@ -378,7 +389,7 @@ func RouteStatusTopology(w http.ResponseWriter, r *http.Request) {
 func RouteRoleMaster(w http.ResponseWriter, r *http.Request) {
 	log.Print("Checking database role: master...")
 	isReadonly := readOnly()
-	isReplica, _ := isReplica()
+	isReplica, _, _ := isReplica()
 
 	routeResponse(w, !isReadonly && !isReplica, "")
 }
@@ -425,7 +436,7 @@ func RouteReadGaleraState(w http.ResponseWriter, r *http.Request) {
 func RouteReadReplicationLag(w http.ResponseWriter, r *http.Request) {
 	log.Print("Reading database replication: lag...")
 	lagString := ""
-	isReplica, _ := isReplica()
+	isReplica, _, _ := isReplica()
 	_, lagValue := replicaStatus(0)
 
 	if isReplica {
@@ -438,15 +449,13 @@ func RouteReadReplicationLag(w http.ResponseWriter, r *http.Request) {
 // RouteReadReplicationMaster ...
 func RouteReadReplicationMaster(w http.ResponseWriter, r *http.Request) {
 	log.Print("Reading database status: master...")
-	lagString := ""
-	isReplica, _ := isReplica()
-	_, lagValue := replicaStatus(0)
+	isReplica, masterIP, masterPort := isReplica()
 
 	if isReplica {
-		lagString = strconv.Itoa(lagValue)
+		masterIP = masterIP + ":" + masterPort
 	}
 
-	routeResponse(w, isReplica, lagString)
+	routeResponse(w, isReplica, masterIP)
 }
 
 // RouteReadReplicasCounter ...
