@@ -389,10 +389,15 @@ func RouteStatusTopology(w http.ResponseWriter, r *http.Request) {
 // RouteRoleMaster ...
 func RouteRoleMaster(w http.ResponseWriter, r *http.Request) {
 	log.Print("Checking database role: master...")
-	isReadonly := readOnly()
-	isReplica, _, _ := isReplica()
 
-	routeResponse(w, !isReadonly && !isReplica, "")
+	if _, err := os.Stat("/master"); os.IsNotExist(err) {
+		isReadonly := readOnly()
+		isReplica, _, _ := isReplica()
+
+		routeResponse(w, !isReadonly && !isReplica, "")
+	} else {
+		routeResponse(w, true, "")
+	}
 }
 
 // RouteRoleReplica ...
