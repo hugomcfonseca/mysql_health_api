@@ -393,8 +393,9 @@ func RouteRoleMaster(w http.ResponseWriter, r *http.Request) {
 	if _, err := os.Stat("/master"); os.IsNotExist(err) {
 		isReadonly := readOnly()
 		isReplica, _, _ := isReplica()
+		isServeLogs := int2bool(servingBinlogs())
 
-		routeResponse(w, !isReadonly && !isReplica, "")
+		routeResponse(w, !isReadonly && !isReplica && isServeLogs, "")
 	} else {
 		routeResponse(w, true, "")
 	}
