@@ -1,6 +1,6 @@
 # mysql_health_api
 
-`mysql_health_api` is a REST API, developed in Go, used to perform multiple health-checks in MySQL databases. Database's health-checks are performed by getting a given endpoint of REST API, which returns an HTTP code and JSON content according a health-check, or not. For instance, if a health-check is returned with success, it will return `200 OK` as HTTP code, and a JSON object. 
+`mysql_health_api` is a REST API, developed in Go, used to perform multiple health-checks in MySQL databases. Database's health-checks are performed by getting a given endpoint of REST API, which returns an HTTP code and JSON content according a health-check, or not. For instance, if a health-check is returned with success, it will return `200 OK` as HTTP code, and a JSON object.
 
 ## Getting Started
 
