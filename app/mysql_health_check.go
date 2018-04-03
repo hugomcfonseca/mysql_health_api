@@ -30,42 +30,46 @@ type SlaveStatus struct {
 	secondsMaster string
 }
 
-// ResponseType Constant
-const ResponseType = "application/json"
+const (
+	responseType = "application/json"
+	contentType  = "Content-Type"
+)
 
-// ContentType Constant
-const ContentType = "Content-Type"
+var (
+	dbUser       = flag.String("user", "mysql", "Database user with privileges")
+	dbPass       = flag.String("password", "", "Password of database user")
+	dbHost       = flag.String("host", "localhost", "Hostname/IP of target database")
+	dbPort       = flag.Int("port", 3306, "Port of target database")
+	dbCnf        = flag.String("cnf", "", "Path to .my.cnf file")
+	dbSocketPath = flag.String("socket", "", "Socket to connect to database")
+	listenAddr   = flag.String("listen-address", "0.0.0.0", "Address where API is listening for requests")
+	listenPort   = flag.Int("listen-port", 3307, "Port where API is listening for requests")
 
-var db *sql.DB
-var lag int
+	db  *sql.DB
+	lag int
+)
 
 func main() {
-
-	var portstring string
-
-	flag.StringVar(&portstring, "port", "3307", "Listening port")
 	flag.Parse()
 
-	cfg, err := ini.Load(os.Getenv("HOME") + "/.my.cnf")
+	cfg, err := ini.Load(*dbCnf)
 
 	if err != nil {
 		log.Panic(err)
 	}
 
-	var dbHost string
-
-	dbUser := cfg.Section("client").Key("user").String()
-	dbPass := cfg.Section("client").Key("password").String()
+	*dbUser = cfg.Section("client").Key("user").String()
+	*dbPass = cfg.Section("client").Key("password").String()
 
 	isSocket := cfg.Section("client").HasKey("socket")
 
 	if isSocket {
-		dbHost = "unix(" + cfg.Section("client").Key("socket").String() + ")"
+		*dbHost = "unix(" + cfg.Section("client").Key("socket").String() + ")"
 	} else {
-		dbHost = cfg.Section("client").Key("hostname").String()
+		*dbHost = cfg.Section("client").Key("hostname").String()
 	}
 
-	db, err = sql.Open("mysql", dbUser+":"+dbPass+"@"+dbHost+"/mysql")
+	db, err = sql.Open("mysql", *dbUser+":"+*dbPass+"@"+*dbHost+"/mysql")
 
 	if err := db.Ping(); err != nil {
 		log.Panic(err)
@@ -92,10 +96,11 @@ func main() {
 	router.HandleFunc("/read/replication/master", RouteReadReplicationMaster)
 	router.HandleFunc("/read/replication/replicas_count", RouteReadReplicasCounter)
 
-	log.Printf("Listening on port %s ...", portstring)
+	log.Printf("Listening on port %d ...", *listenPort)
 
-	err2 := http.ListenAndServe(":"+portstring, LogRequests(CheckURL(router)))
-	log.Fatal(err2)
+	if err := http.ListenAndServe(fmt.Sprintf("%s:%d", *listenAddr, *listenPort), LogRequests(CheckURL(router))); err != nil {
+		log.Fatal(err)
+	}
 }
 
 /*
@@ -132,7 +137,7 @@ func CheckURL(next http.Handler) http.Handler {
 			return
 		}
 
-		w.Header().Set(ContentType, ResponseType)
+		w.Header().Set(contentType, responseType)
 
 		next.ServeHTTP(w, r)
 	})
