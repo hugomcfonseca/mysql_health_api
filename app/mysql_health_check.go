@@ -52,30 +52,9 @@ var (
 func main() {
 	flag.Parse()
 
-	cfg, err := ini.Load(*dbCnf)
-
-	if err != nil {
-		log.Panic(err)
+	if isValid, err := validateInputArgs(); !isValid {
+		log.Fatal(err)
 	}
-
-	*dbUser = cfg.Section("client").Key("user").String()
-	*dbPass = cfg.Section("client").Key("password").String()
-
-	isSocket := cfg.Section("client").HasKey("socket")
-
-	if isSocket {
-		*dbHost = "unix(" + cfg.Section("client").Key("socket").String() + ")"
-	} else {
-		*dbHost = cfg.Section("client").Key("hostname").String()
-	}
-
-	db, err = sql.Open("mysql", *dbUser+":"+*dbPass+"@"+*dbHost+"/mysql")
-
-	if err := db.Ping(); err != nil {
-		log.Panic(err)
-	}
-
-	defer db.Close()
 
 	router := http.NewServeMux()
 
@@ -147,6 +126,78 @@ func CheckURL(next http.Handler) http.Handler {
  *	General functions
  */
 
+// validateInputArgs checks input arguments and returns true on success.
+// Otherwise, it will return false and an error message
+func validateInputArgs() (bool, string) {
+	var errMsg string
+
+	if *listenPort < 1024 || *listenPort > 65535 {
+		errMsg = "API port out of allowed ports range (1024-65535)."
+		return false, errMsg
+	}
+
+	if *dbCnf != "" {
+		if _, err := os.Stat(*dbCnf); os.IsNotExist(err) {
+			errMsg = fmt.Sprintf("`%s`: Not found.", *dbCnf)
+			return false, errMsg
+		}
+
+		cfg, err := ini.Load(*dbCnf)
+		if err != nil {
+			return false, err.Error()
+		}
+
+		if isSocket := cfg.Section("client").HasKey("socket"); isSocket {
+			*dbHost = fmt.Sprintf("unix(%s)", cfg.Section("client").Key("socket").String())
+		} else {
+			if hasPort := cfg.Section("client").HasKey("port"); hasPort {
+				*dbPort, _ = cfg.Section("client").Key("port").Int()
+			} else {
+				log.Print("No database port is present in config file. Assuming default value (3306).")
+				*dbPort = 3306
+			}
+
+			*dbHost = fmt.Sprintf("tcp(%s:%d)", cfg.Section("client").Key("host").String(), *dbPort)
+		}
+
+		if hasUser := cfg.Section("client").HasKey("user"); hasUser {
+			*dbUser = cfg.Section("client").Key("user").String()
+		} else {
+			log.Print("No database user is present in config file. Assuming default value (mysql).")
+			*dbUser = "mysql"
+		}
+
+		if hasPass := cfg.Section("client").HasKey("password"); hasPass {
+			*dbPass = cfg.Section("client").Key("password").String()
+		} else {
+			errMsg = fmt.Sprint("No database password is present in config file. Please, provide it.")
+			return false, errMsg
+		}
+	} else {
+		if *dbSocketPath != "" {
+			*dbHost = fmt.Sprintf("unix(%s)", *dbSocketPath)
+		} else {
+			*dbHost = fmt.Sprintf("tcp(%s:%d)", *dbHost, *dbPort)
+		}
+	}
+
+	if *dbUser == "" || *dbPass == "" || *dbHost == "" {
+		errMsg = fmt.Sprint("Empty required arguments to start connection to database. Please, fix it.")
+		return false, errMsg
+	}
+
+	dsn := fmt.Sprintf("%s:%s@%s/mysql", *dbUser, *dbPass, *dbHost)
+	db, _ = sql.Open("mysql", dsn)
+
+	if err := db.Ping(); err != nil {
+		return false, err.Error()
+	}
+
+	defer db.Close()
+
+	return true, ""
+}
+
 // int2bool Convert integers to boolean
 func int2bool(value int) bool {
 	if value != 0 {
@@ -154,6 +205,22 @@ func int2bool(value int) bool {
 	}
 
 	return false
+}
+
+// routeResponse Used to build response to API requests
+func routeResponse(w http.ResponseWriter, httpStatus bool, contents string) {
+	res := new(HTTPResponse)
+
+	if httpStatus {
+		w.WriteHeader(200)
+	} else {
+		w.WriteHeader(403)
+	}
+
+	res.Status = httpStatus
+	res.Content = contents
+	response, _ := json.Marshal(res)
+	fmt.Fprintf(w, "%s", response)
 }
 
 // unknownColumns Used to get value from specific column of a range of unknown columns
@@ -202,22 +269,6 @@ func unknownColumns(rows *sql.Rows) SlaveStatus {
 	}
 
 	return *res
-}
-
-// routeResponse Used to build response to API requests
-func routeResponse(w http.ResponseWriter, httpStatus bool, contents string) {
-	res := new(HTTPResponse)
-
-	if httpStatus {
-		w.WriteHeader(200)
-	} else {
-		w.WriteHeader(403)
-	}
-
-	res.Status = httpStatus
-	res.Content = contents
-	response, _ := json.Marshal(res)
-	fmt.Fprintf(w, "%s", response)
 }
 
 /*
